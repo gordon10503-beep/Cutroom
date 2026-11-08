@@ -1,4 +1,5 @@
 from functools import lru_cache
+from fractions import Fraction
 import argparse
 import json
 import math
@@ -30,7 +31,8 @@ def probe(path):
     streams = info["streams"]
     video = next((s for s in streams if s["codec_type"] == "video" and not s.get("disposition", {}).get("attached_pic")), {})
     duration = float(info["format"].get("duration", video.get("duration", 0)) or 0)
-    return dict(duration=duration, width=video.get("width", 0), height=video.get("height", 0),
+    fps = video.get("avg_frame_rate", "0/0")
+    return dict(fps=float(Fraction(fps)) if fps != "0/0" else 0, duration=duration, width=video.get("width", 0), height=video.get("height", 0),
                 audio=any(s["codec_type"] == "audio" for s in streams),
                 sample_rate=next((int(s["sample_rate"]) for s in streams if s["codec_type"] == "audio"), 0))
 
@@ -64,6 +66,8 @@ def audio_filter(key, tempo):
     key, tempo = float(key), float(tempo)
     if not math.isfinite(key) or not math.isfinite(tempo) or tempo <= 0:
         raise ValueError("Enter a finite pitch and positive tempo.")
+    if key == 0 and tempo == 1:
+        return "anull"
     stages = max(1, math.ceil(abs(key) / 60), math.ceil(abs(math.log2(tempo)) / 5))
     pitch = 2 ** (key / stages / 12)
     speed = tempo ** (1 / stages)
@@ -109,11 +113,19 @@ def export(data, dest):
             encode("-ss", a, "-i", path, "-t", b-a, "-map", "0:v:0", "-map", "0:a:0?",
                    "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30", "-c:v", "libx264", "-preset", "veryfast",
                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{i:03}.mp4")
-    elif task == "audioSplit":
+    elif task == "audioSplit" or (task == "audio" and data.get("mode", "none") != "none"):
+        task = "audioSplit"
         meta = probe(path)
         if not meta["audio"]:
             raise ValueError("Choose a source with an audio track.")
         points = cuts(meta["duration"], data)
+        key, tempo = float(data.get("key", 0)), float(data.get("tempo", 1))
+        if key != 0 or tempo != 1:
+            adjusted = dest / "adjusted-source.wav"
+            encode("-i", path, "-vn", "-af", audio_filter(key, tempo), "-c:a", "pcm_s24le", adjusted)
+            path = adjusted
+            meta = probe(path)
+            points = [t / tempo for t in points[:-1]] + [meta["duration"]]
         for i, (start, end) in enumerate(zip(points, points[1:]), 1):
             rate = meta["sample_rate"]
             first, stop = round(start * rate), round(end * rate)
@@ -121,6 +133,8 @@ def export(data, dest):
                 raise ValueError("Each audio clip must contain at least one sample.")
             encode("-ss", f"{first/rate:.9f}", "-i", path, "-map", "0:a:0", "-af", f"atrim=end_sample={stop-first}",
                    "-c:a", "pcm_s24le", dest / f"clip-{i:03}.wav")
+        if path.parent == dest:
+            path.unlink()
     elif task == "grid":
         from PIL import Image, ImageOps
         rows, cols = int(data["rows"]), int(data["cols"])
@@ -229,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError("Upload interrupted.")
                         f.write(chunk)
                         n -= len(chunk)
-                if self.headers.get("X-Tool") == "audioSplit":
+                if self.headers.get("X-Tool") in ("audio", "audioSplit"):
                     # Normalize codec delay and container padding before calculating cut boundaries.
                     decoded = WORK / (token + "-decoded.wav")
                     encode("-i", path, "-map", "0:a:0", "-c:a", "pcm_s24le", decoded)

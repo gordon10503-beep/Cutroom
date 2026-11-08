@@ -21,7 +21,7 @@ The launcher chooses a free local port and opens your default browser. For a spe
 
 ## Split video or audio
 
-Choose **Story splitter** for numbered MP4 files or **Audio splitter** for numbered 24-bit PCM WAV files. Each export downloads as a ZIP.
+Choose **Story splitter** for numbered MP4 files or open **Audio editor** for 24-bit PCM WAV files. Audio starts in **No cut** and exports one WAV. Select a split mode to export a ZIP of numbered clips with your pitch and tempo settings. Place cuts on the source timeline. For example, the first 60 seconds of the source becomes about 30 seconds at 2× tempo.
 
 | Mode | How to use it |
 | --- | --- |
@@ -29,7 +29,7 @@ Choose **Story splitter** for numbered MP4 files or **Audio splitter** for numbe
 | Equal parts | Enter a clip count to divide the full duration evenly. |
 | Custom cuts | Scrub the player or type a position, then select **Add cut**. You can also drag directly on a clip in the sequence and release to split it, or right-click at the desired position. |
 
-Video frame numbers start at 1. A cut at frame 34 starts the next clip at that frame. The **Cut time** readout shows its source timestamp down to milliseconds. Custom video cuts use the source frame timestamps, including for variable-frame-rate footage. Audio accepts positions in seconds to three decimal places and exports at the source sample rate.
+Video frame numbers start at 1. A cut at frame 34 starts the next clip at that frame. The **Cut time** readout shows its source timestamp down to milliseconds. After frame indexing, the frame-rate readout shows FPS and labels variable-rate footage with its average. Custom video cuts use the source frame timestamps, including for variable-frame-rate footage. Audio accepts positions in seconds to three decimal places and exports at the source sample rate.
 
 Click a cut label to revisit it or its × to remove it. The arrows, **Ctrl+Z**, and **Ctrl+Y** undo and redo custom cut edits.
 

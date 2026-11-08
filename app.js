@@ -18,27 +18,25 @@ const paths = {
 const icon = name => '<svg aria-hidden="true" viewBox="0 0 24 24">'+paths[name]+'</svg>';
 const tools = {
  story:['Story splitter','Split a video into story-ready clips.','scissors','video','Split settings','Clip sequence','Export clips'],
- audioSplit:['Audio splitter','Split a recording into downloadable WAV clips.','audio','audio','Split settings','Clip sequence','Export clips'],
  grid:['Photo grid','Divide a photo into tiles for your profile grid.','grid','image','Grid settings','Posting order','Export tiles'],
  loop:['GIF looper','Loop a GIF for the full length of your song.','loop','GIF','Loop settings','Video output','Export video'],
  audio:['Audio editor','Adjust pitch and tempo independently.','audio','audio','Audio settings','Audio output','Export audio']
 };
 const states = {
  story:{media:{id:'sample',name:'Alpine session.mp4',duration:134,width:1280,height:720,thumb:'/assets/alpine.jpg'},mode:'fixed',length:60,count:3,frames:[],past:[],future:[],selected:0},
- audioSplit:{mode:'fixed',length:60,count:3,frames:[],past:[],future:[],selected:0},
- grid:{rows:3,cols:3,portrait:true,x:.5,y:.5,zoom:1},loop:{key:0,tempo:1},audio:{key:0,tempo:1}
+ grid:{rows:3,cols:3,portrait:true,x:.5,y:.5,zoom:1},loop:{key:0,tempo:1},audio:{key:0,tempo:1,mode:'none',length:60,count:3,frames:[],past:[],future:[],selected:0}
 };
 let task='story', selectingSong=false;
 const current=()=>states[task];
-function isSplitter(){return task==='story'||audioSplit()}
-function audioSplit(){return task==='audioSplit'}
+function isSplitter(){return task==='story'||isAudioEditor()}
+function isAudioEditor(){return task==='audio'}
 function timestamp(seconds){
  const ms=Math.round(seconds*1000);
  return fmt(ms/1000)+'.'+String(ms%1000).padStart(3,'0');
 }
-function lastPosition(m){return audioSplit()?Math.ceil(m.duration*1000)-1:m.times.length-1}
-function positionTime(m,index){return audioSplit()?index/1000:m.times[index]}
-function positionAt(m,time){return audioSplit()?Math.min(lastPosition(m),Math.max(0,Math.round(time*1000))):frameAt(m.times,time)}
+function lastPosition(m){return isAudioEditor()?Math.ceil(m.duration*1000)-1:m.times.length-1}
+function positionTime(m,index){return isAudioEditor()?index/1000:m.times[index]}
+function positionAt(m,time){return isAudioEditor()?Math.min(lastPosition(m),Math.max(0,Math.round(time*1000))):frameAt(m.times,time)}
 const fmt=n=>Math.floor(n/60).toString().padStart(2,'0')+':'+Math.floor(n%60).toString().padStart(2,'0');
 function button(id, name, label){return '<button class="iconbtn" id="'+id+'" aria-label="'+label+'">'+icon(name)+'</button>'}
 function field(key,label,value,unit='',text=false){
@@ -58,27 +56,27 @@ function renderMedia(){
  const s=current(), m=s.media;
  $('resolution').textContent=m?.width?m.width+' × '+m.height:tools[task][3].toUpperCase();
  $('stage').innerHTML='';$('player').innerHTML='';$('source').innerHTML='';
- if(!m){$('stage').innerHTML='<div class="empty">'+icon(tools[task][2])+'Import '+(task==='audio'||audioSplit()?'an audio file':task==='grid'?'a photo':'a GIF')+' to begin</div>';return}
+ if(!m){$('stage').innerHTML='<div class="empty">'+icon(tools[task][2])+'Import '+(isAudioEditor()?'an audio file':task==='grid'?'a photo':'a GIF')+' to begin</div>';return}
  const url='/media/'+m.id;
  if(isSplitter()){
-  $('stage').innerHTML=audioSplit()?'<div class="empty">'+icon('audio')+'Audio preview<audio id="video" preload="auto"></audio></div>':'<video id="video" playsinline preload="auto"></video><span class="over">SOURCE PREVIEW</span>';
+  $('stage').innerHTML=isAudioEditor()?'<div class="empty">'+icon('audio')+'Audio preview<audio id="video" preload="auto"></audio></div>':'<video id="video" playsinline preload="auto"></video><span class="over">SOURCE PREVIEW</span>';
   const v=$('video');if(m.thumb)v.poster=m.thumb;v.src=url;
-  $('player').innerHTML='<div class="controls">'+button('play','play','Play preview')+'<span class="time" id="clock"></span><input type="range" id="seek" aria-label="Seek media" min="0" step=".01">'+button('volume','volume','Toggle sound')+(audioSplit()?'':button('full','full','Fullscreen'))+'</div>';
-  const sync=()=>{if(v!==$('video'))return;$('clock').textContent=fmt(v.currentTime)+' / '+fmt(m.duration);if(s.mode==='custom'&&(m.times||audioSplit())){syncCursor(positionAt(m,v.currentTime))}else{$('seek').value=v.currentTime}};
+  $('player').innerHTML='<div class="controls">'+button('play','play','Play preview')+'<span class="time" id="clock"></span><input type="range" id="seek" aria-label="Seek media" min="0" step=".01">'+button('volume','volume','Toggle sound')+(isAudioEditor()?'':button('full','full','Fullscreen'))+'</div>';
+  const sync=()=>{if(v!==$('video'))return;$('clock').textContent=fmt(v.currentTime)+' / '+fmt(m.duration);if(s.mode==='custom'&&(m.times||isAudioEditor())){syncCursor(positionAt(m,v.currentTime))}else{$('seek').value=v.currentTime}};
   $('seek').max=m.duration;sync();v.ontimeupdate=sync;
   v.onplay=v.onpause=()=>{$('play').innerHTML=icon(v.paused?'play':'pause');$('play').ariaLabel=v.paused?'Play preview':'Pause preview'};
   $('play').onclick=()=>v.paused?v.play().catch(()=>{$('status').textContent='Preview unavailable for this codec. Export is available.'}):v.pause();
-  $('seek').oninput=e=>{if(s.mode==='custom'&&(m.times||audioSplit()))seekFrame(+e.target.value);else v.currentTime=+e.target.value};$('volume').onclick=()=>{v.muted=!v.muted;$('volume').innerHTML=icon(v.muted?'mute':'volume')};
+  $('seek').oninput=e=>{if(s.mode==='custom'&&(m.times||isAudioEditor()))seekFrame(+e.target.value);else v.currentTime=+e.target.value};$('volume').onclick=()=>{v.muted=!v.muted;$('volume').innerHTML=icon(v.muted?'mute':'volume')};
   $('seek').oncontextmenu=e=>{
-   if(s.mode!=='custom'||(!m.times&&!audioSplit()))return;
+   if(s.mode!=='custom'||(!m.times&&!isAudioEditor()))return;
    e.preventDefault();const rect=$('seek').getBoundingClientRect();
    const frame=Math.round(clamp((e.clientX-rect.left-7)/Math.max(1,rect.width-14))* lastPosition(m));
    seekFrame(frame);addCut(frame);
   };
-  v.oncontextmenu=e=>{if(s.mode==='custom'&&(m.times||audioSplit())){e.preventDefault();v.pause();addCut(positionAt(m,v.currentTime))}};
+  v.oncontextmenu=e=>{if(s.mode==='custom'&&(m.times||isAudioEditor())){e.preventDefault();v.pause();addCut(positionAt(m,v.currentTime))}};
   if($('full'))$('full').onclick=()=>v.requestFullscreen();
-  if(!audioSplit()&&!m.thumb)v.onloadeddata=()=>{try{const c=document.createElement('canvas');c.width=130;c.height=74;c.getContext('2d').drawImage(v,0,0,130,74);m.thumb=c.toDataURL();renderResults()}catch{}};
- }else if(task==='grid'){mountCrop(m)}else if(task==='audio'){$('stage').innerHTML='<div class="empty">'+icon('audio')+'Source audio<audio class="sound" controls></audio></div>';$('stage').querySelector('audio').src=url}
+  if(!isAudioEditor()&&!m.thumb)v.onloadeddata=()=>{try{const c=document.createElement('canvas');c.width=130;c.height=74;c.getContext('2d').drawImage(v,0,0,130,74);m.thumb=c.toDataURL();renderResults()}catch{}};
+ }else if(task==='grid'){mountCrop(m)}
  else{$('stage').innerHTML='<img alt="Imported image preview"><span class="over">SOURCE PREVIEW</span>'; $('stage').querySelector('img').src=url}
  $('source').innerHTML='<div class="source"><div class="fileicon">'+icon(task==='story'?'film':tools[task][2])+'</div><div><div class="filename"></div><div class="meta"></div></div></div>';
  $('source').querySelector('.filename').textContent=m.name;
@@ -86,20 +84,24 @@ function renderMedia(){
 }
 function renderSettings(){
  const s=current(), box=$('settings');let html='', keys=[];
+ if(task==='audio'||task==='loop'){
+  html+='<div class="field">'+field('key','PITCH SHIFT',s.key,'semitones')+'</div><div class="field">'+field('tempo','TEMPO MULTIPLIER',s.tempo,'×')+'</div>';
+  keys.push('key','tempo');
+ }
  if(isSplitter()){
- html='<div class="fieldlabel">SPLIT MODE</div>'+[['fixed','Fixed duration','Set a length for each clip'],['equal','Equal parts','Divide into a set number of clips'],['custom','Custom cuts','Choose your own cut points']].map(([k,a,b])=>'<button class="option '+(s.mode===k?'active':'')+'" data-mode="'+k+'" aria-pressed="'+(s.mode===k)+'"><i class="radio"></i><span><strong>'+a+'</strong><small>'+b+'</small></span></button>').join('');
+ const modes=[['fixed','Fixed duration','Set a length for each clip'],['equal','Equal parts','Divide into a set number of clips'],['custom','Custom cuts','Choose your own cut points']];
+ if(isAudioEditor())modes.unshift(['none','No cut','Export the whole recording as one WAV']);
+ html+='<div class="fieldlabel splitlabel">'+(isAudioEditor()?'AUDIO SPLITTING':'SPLIT MODE')+'</div>'+modes.map(([k,a,b])=>'<button class="option '+(s.mode===k?'active':'')+'" data-mode="'+k+'" aria-pressed="'+(s.mode===k)+'"><i class="radio"></i><span><strong>'+a+'</strong><small>'+b+'</small></span></button>').join('');
  if(s.mode==='custom'){
   html+='<div id="cutEditor"></div>';
- }else{
+ }else if(s.mode!=='none'){
   const k=s.mode==='fixed'?'length':'count';
-  html+='<div class="field">'+field(k,k==='length'?'CLIP LENGTH':'NUMBER OF CLIPS',s[k],k==='length'?'sec':'clips')+'</div>';keys=[k];
+  html+='<div class="field">'+field(k,k==='length'?'CLIP LENGTH':'NUMBER OF CLIPS',s[k],k==='length'?'sec':'clips')+'</div>';keys.push(k);
  }
  }else if(task==='grid'){
  html=field('rows','ROWS',s.rows)+'<div class="field">'+field('cols','COLUMNS',s.cols)+'</div><div class="field"><label class="fieldlabel" for="shape">TILE SHAPE</label><div class="inputrow"><select id="shape"><option value="portrait">Portrait · 3:4</option><option value="square">Square · 1:1</option></select></div></div>';keys=['rows','cols'];
  html+='<div class="field"><label class="fieldlabel" for="zoom">CROP ZOOM</label><input id="zoom" type="range" min="1" max="4" step=".01"><button class="textbtn" id="centerCrop">Reset framing</button></div>';
- }else{
 
- html+='<div class="field">'+field('key','PITCH SHIFT',s.key,'semitones')+'</div><div class="field">'+field('tempo','TEMPO MULTIPLIER',s.tempo,'×')+'</div>';keys=['key','tempo'];
  }
  const audioImport=task==='loop'?'<button class="secondary" id="song">'+icon('audio')+'Import audio</button>':'';
  const imports='<div class="importgroup"><div class="fieldlabel">SOURCE MEDIA</div><div class="importbuttons"><button class="secondary" id="panelImport">'+icon('upload')+'Import '+tools[task][3]+'</button>'+audioImport+'</div></div>';
@@ -124,18 +126,21 @@ function renderSettings(){
 }
 function points(s){
  const d=s.media.duration;
- if(s.mode==='custom'){if(!audioSplit()&&!s.media.times)throw Error('Reading video frames…');return [0,...s.frames.map(i=>positionTime(s.media,i)),d]}
+ if(s.mode==='custom'){if(!isAudioEditor()&&!s.media.times)throw Error('Reading video frames…');return [0,...s.frames.map(i=>positionTime(s.media,i)),d]}
  const count=s.mode==='equal'?Number(s.count):Math.ceil(d/Number(s.length));
  if(!Number.isInteger(count)||count<1||count>1000)throw Error('Choose a positive length and between 1 and 1,000 clips.');
  return [...Array.from({length:count},(_,i)=>i*(s.mode==='equal'?d/count:Number(s.length))),d];
 }
 function renderResults(){
  const s=current(),box=$('results');$('outputCount').textContent='';box.innerHTML='';
- if(isSplitter()){
+ const splitting=isSplitter()&&s.mode!=='none';
+ $('outputTitle').textContent=splitting?'Clip sequence':tools[task][5];
+ $('export').innerHTML=icon('download')+(splitting?'Export clips':tools[task][6]);
+ if(splitting){
  if(!s.media){box.className='note';box.textContent='Import audio to build the clip sequence.';return}
  try{const p=points(s);$('outputCount').textContent=(p.length-1)+(p.length===2?' clip':' clips');box.className='clips';
  p.slice(1).forEach((end,i)=>{const b=document.createElement('button');b.className='clip'+(i===s.selected?' selected':'');const n=String(i+1).padStart(2,'0');
- b.innerHTML='<div class="strip"><span class="num">'+n+'</span></div><div class="cliptext"><strong>Clip '+n+'</strong><span>'+(s.mode==='custom'&&!audioSplit()?'F'+((i?s.frames[i-1]:0)+1)+' – F'+(s.frames[i]??s.media.times.length):timestamp(p[i])+' – '+timestamp(end))+'</span></div>';
+ b.innerHTML='<div class="strip"><span class="num">'+n+'</span></div><div class="cliptext"><strong>Clip '+n+'</strong><span>'+(s.mode==='custom'&&!isAudioEditor()?'F'+((i?s.frames[i-1]:0)+1)+' – F'+(s.frames[i]??s.media.times.length):timestamp(p[i])+' – '+timestamp(end))+'</span></div>';
  if(s.media.thumb)b.firstChild.style.backgroundImage='url("'+s.media.thumb+'")';
  if(s.mode==='custom')bindSequenceCut(b,p,i);
  b.onclick=e=>{if(s.mode==='custom'&&e.detail)return;s.selected=i;$('video').currentTime=p[i];renderResults()};box.append(b)});
@@ -148,15 +153,16 @@ function renderResults(){
  box.textContent=task==='loop'?'The GIF repeats until the adjusted soundtrack ends.':'Export a WAV file with your pitch and tempo settings.';
  $('outputCount').textContent=(d&&speed>0?fmt(d/speed)+' · ':'')+(task==='loop'?'MP4':'WAV')}
 }
-function choose(song=false){selectingSong=song;$('file').accept=song||task==='audio'||audioSplit()?'audio/*':task==='story'?'video/*':task==='grid'?'image/*':'image/gif';$('file').value='';$('file').click()}
+function choose(song=false){selectingSong=song;$('file').accept=song||isAudioEditor()?'audio/*':task==='story'?'video/*':task==='grid'?'image/*':'image/gif';$('file').value='';$('file').click()}
 async function request(path,body,headers={}){const r=await fetch(path,{method:'POST',headers:{'X-Cutroom':'local',...headers},body});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed.');return data}
 $('file').onchange=async()=>{
  const f=$('file').files[0];if(!f)return;const s=current(), song=selectingSong, kind=task;s.message='Importing '+f.name+'…';s.download=null;$('status').textContent=s.message;
  try{const m=await request('/upload',f,{'X-Tool':kind,'X-Extension':f.name.split('.').pop()});
- if((song||kind==='audio'||kind==='audioSplit')&&!m.audio)throw Error('Choose a file with an audio track.');
- if(!song&&kind!=='audio'&&kind!=='audioSplit'&&!m.width)throw Error('Choose a file with a visual track.');
+ if((song||kind==='audio')&&!m.audio)throw Error('Choose a file with an audio track.');
+ if(!song&&kind!=='audio'&&!m.width)throw Error('Choose a file with a visual track.');
  if(kind==='story'&&!(m.duration>0))throw Error('Choose a video with a known duration.');
- if(kind==='story'||kind==='audioSplit')Object.assign(s,{frames:[],past:[],future:[]});
+ if(kind==='story'||kind==='audio')Object.assign(s,{frames:[],past:[],future:[]});
+ if(kind==='audio')s.mode='none';
  if(kind==='grid')Object.assign(s,{x:.5,y:.5,zoom:1});
  m.name=f.name;s[song?'song':'media']=m;s.selected=0;s.message='';}catch(e){s.message=e.message}if(s===current())render();
 };
@@ -165,7 +171,7 @@ $('export').onclick=async()=>{
  const s=current();if(s.busy)return;s.download=null;
  try{if(!s.media)throw Error('Import your '+tools[task][3]+' first.');if(task==='loop'&&!s.song)throw Error('Import a soundtrack first.');
  const data={task,id:s.media.id,mode:s.mode,length:s.length,count:s.count,rows:s.rows,cols:s.cols,portrait:s.portrait,x:s.x,y:s.y,zoom:s.zoom,key:s.key,tempo:s.tempo,song:s.song?.id};
- if(isSplitter()){const boundaries=points(s);if(s.mode==='custom'){if(audioSplit())data.points=boundaries.slice(1,-1);else data.frames=s.frames}}
+ if(isSplitter()&&s.mode!=='none'){const boundaries=points(s);if(s.mode==='custom'){if(isAudioEditor())data.points=boundaries.slice(1,-1);else data.frames=s.frames}}
  s.busy=true;s.message='Exporting…';$('export').disabled=true;$('status').textContent=s.message;
  s.download=await request('/export',JSON.stringify(data),{'Content-Type':'application/json'});s.message='';
  if(current()===s){showDownload(s);$('status').querySelector('a').click()}
@@ -187,13 +193,13 @@ function frameAt(times, time){
 function syncCursor(index){
  $('seek').value=index;
  if($('playTime'))$('playTime').textContent=timestamp(positionTime(current().media,index));
- if($('frameNumber')&&document.activeElement!==$('frameNumber'))$('frameNumber').value=audioSplit()?index/1000:index+1;
+ if($('frameNumber')&&document.activeElement!==$('frameNumber'))$('frameNumber').value=isAudioEditor()?index/1000:index+1;
 }
 
 function seekFrame(index){
  const {media}=current();
  if(!Number.isInteger(index)||index<0||index>lastPosition(media))return;
- const start=positionTime(media,index),end=audioSplit()?start:media.times[index+1]??media.duration;
+ const start=positionTime(media,index),end=isAudioEditor()?start:media.times[index+1]??media.duration;
  const video=$('video');video.pause();video.currentTime=start+Math.max(0,end-start)/2;
  syncCursor(index);
 }
@@ -207,7 +213,7 @@ async function setupTimeline(){
  }
  marks.replaceChildren();
  if(s.mode!=='custom'){seek.max=m.duration;seek.step='.01';seek.value=$('video').currentTime;seek.disabled=false;return}
- if(!m.times&&!audioSplit()){
+ if(!m.times&&!isAudioEditor()){
   $('cutEditor').textContent='Reading video frames…';seek.disabled=true;
   try{
    m.loading??=request('/frames',JSON.stringify({id:m.id})).then(result=>m.times=result.times);
@@ -221,11 +227,20 @@ async function setupTimeline(){
  }
  seek.disabled=false;seek.max=lastPosition(m);seek.step=1;
  $('cutEditor').innerHTML='<div class="cuthead"><label for="frameNumber" class="fieldlabel">PLAYHEAD FRAME</label><div><button class="textbtn history" id="undo" aria-label="Undo cut edit" title="Undo (Ctrl+Z)">↶</button><button class="textbtn history" id="redo" aria-label="Redo cut edit" title="Redo (Ctrl+Y)">↷</button></div></div><div class="cutrow"><div class="inputrow"><input id="frameNumber" type="number" min="1" step="1" aria-label="Playhead frame"><span class="unit"></span></div><button class="secondary" id="addCut">+ Add cut</button></div><div class="playtime">Cut time <output id="playTime"></output></div><p class="hint">Drag on a clip below and release to add a cut. Right-click also cuts at the pointer.</p><div id="cutList"></div>';
- const number=$('frameNumber'),audio=audioSplit();
+ const number=$('frameNumber'),audio=isAudioEditor();
  if(audio){
   number.min=0;number.step='.001';number.max=lastPosition(m)/1000;number.ariaLabel='Playhead seconds';
   document.querySelector('label[for=frameNumber]').textContent='PLAYHEAD TIME';number.nextElementSibling.textContent='sec';
- }else{number.max=m.times.length;number.nextElementSibling.textContent='/ '+m.times.length}
+ }else{
+  const row=document.createElement('div');row.className='playtime';
+  const output=document.createElement('output');row.append('Frame rate',output);
+  if(m.times.length>1){
+   const span=m.times.at(-1)-m.times[0],interval=span/(m.times.length-1);
+   const variable=m.times.some((t,i)=>i>0&&Math.abs(t-m.times[i-1]-interval)>Math.max(.0011,interval*.015));
+   output.textContent=Number((1/interval).toFixed(3))+' fps'+(variable?' (variable, average)':'');
+  }else{output.textContent=m.fps?Number(m.fps.toFixed(3))+' fps (reported)':'Single frame'}
+  $('playTime').parentElement.after(row);
+  number.max=m.times.length;number.nextElementSibling.textContent='/ '+m.times.length}
  number.required=true;
  const enteredPosition=()=>audio?Math.round(+number.value*1000):+number.value-1;
  number.oninput=()=>{if(number.validity.valid)seekFrame(enteredPosition())};
@@ -241,7 +256,7 @@ function paintCuts(){
  const list=$('cutList'),marks=$('cutMarks');list.replaceChildren();marks.replaceChildren();
  for(const frame of s.frames){
   const chip=document.createElement('div');chip.className='cutchip';
-  const jump=document.createElement('button');jump.textContent=(audioSplit()?'':'F'+(frame+1)+' · ')+timestamp(positionTime(s.media,frame));jump.title='Seek to cut';jump.onclick=()=>seekFrame(frame);
+  const jump=document.createElement('button');jump.textContent=(isAudioEditor()?'':'F'+(frame+1)+' · ')+timestamp(positionTime(s.media,frame));jump.title='Seek to cut';jump.onclick=()=>seekFrame(frame);
   const remove=document.createElement('button');remove.textContent='×';remove.ariaLabel='Remove cut at '+jump.textContent;remove.onclick=()=>editCuts(s.frames.filter(f=>f!==frame));
   chip.append(jump,remove);list.append(chip);
   const tick=document.createElement('i');tick.style.left=100*frame/lastPosition(s.media)+'%';marks.append(tick);
@@ -253,7 +268,7 @@ function editCuts(next){
 }
 function addCut(frame){
  const s=current();
- if(frame<=0||frame>lastPosition(s.media)||!Number.isInteger(frame)){$('status').textContent=audioSplit()?'Choose a time inside the recording.':'Choose frame 2 or later to start a new clip.';return}
+ if(frame<=0||frame>lastPosition(s.media)||!Number.isInteger(frame)){$('status').textContent=isAudioEditor()?'Choose a time inside the recording.':'Choose frame 2 or later to start a new clip.';return}
  if(s.frames.includes(frame)){$('status').textContent='A cut already starts at this frame.';return}
  editCuts([...s.frames,frame].sort((a,b)=>a-b));
 }
