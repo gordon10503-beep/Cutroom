@@ -116,7 +116,29 @@ function renderSettings(){
  }
  if($('tempo')){
   const range=document.createElement('input');range.type='range';range.id='tempoSlider';range.ariaLabel='Tempo multiplier';range.min='.25';range.max='4';range.step='.01';range.value=s.tempo;
-  $('tempo').closest('.field').append(range);range.oninput=()=>{$('tempo').value=range.value;$('tempo').dispatchEvent(new Event('input'))};
+  $('tempo').closest('.field').append(range);
+  let dragging=false, heldStop=null;
+  range.onpointerdown=event=>{
+   if(event.isPrimary&&event.button===0){
+    dragging=true;
+    const start=Math.round(range.valueAsNumber*100);
+    heldStop=start%5===0?start:null;
+    range.setPointerCapture(event.pointerId);
+   }
+  };
+  range.onlostpointercapture=()=>{dragging=false;heldStop=null};
+  range.oninput=()=>{
+   if(dragging){
+    // Work in hundredths so both sides of a detent have identical thresholds.
+    const raw=Math.round(range.valueAsNumber*100);
+    const nearest=Math.round(raw/5)*5;
+    if(heldStop!==null&&Math.abs(raw-heldStop)>2)heldStop=null;
+    if(heldStop===null&&Math.abs(raw-nearest)<=1)heldStop=nearest;
+    if(heldStop!==null)range.value=heldStop/100;
+   }
+   $('tempo').value=range.value;
+   $('tempo').dispatchEvent(new Event('input'));
+  };
  }
  if($('zoom')){$('zoom').value=s.zoom;$('zoom').oninput=e=>{s.zoom=+e.target.value;drawCrop()};$('centerCrop').onclick=()=>{Object.assign(s,{x:.5,y:.5,zoom:1});$('zoom').value=1;drawCrop()}}
  if(isSplitter()&&s.media)setupTimeline();
