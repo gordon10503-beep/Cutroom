@@ -1,6 +1,6 @@
 # Cutroom
 
-Cutroom is a local Windows media editor for preparing Instagram stories, profile grids, and song covers. It runs in your browser and processes your files on your computer.
+Cutroom is a local media editor for preparing Instagram stories, profile grids, and song covers. Windows runs the editor in your browser. The Android and iOS projects package it in a WebView with an offline media engine.
 
 ## Run on Windows
 
@@ -43,10 +43,27 @@ Open **GIF looper**, import a GIF and a soundtrack, and set pitch and tempo. The
 
 Use **Audio editor** to export the adjusted soundtrack by itself as a 24-bit WAV. Pitch is measured in semitones, so +12 raises the key by an octave. Tempo is a multiplier, so 0.8 plays at 80% speed. Use the slider or type a positive value. Audio editor playback previews the source, and the export contains the adjustments.
 
-## Architecture and mobile plans
+## Packaged apps
 
-The UI uses HTML, CSS, and vanilla JavaScript. A Python server listens on the local loopback address, serves previews, and handles import and export requests. FFmpeg and FFprobe handle audio and video. Pillow handles image cropping and tiling. The Windows version uses the browser already installed on the machine.
+**Windows x64.** Extract the entire portable ZIP, then open `Cutroom.exe`. Keep the small Cutroom window open while editing. The distribution includes Python, Pillow, FFmpeg and FFprobe. To rebuild on Windows with those tools installed, install PyInstaller with `python -m pip install pyinstaller` and run `.\scripts\build-windows.ps1` from PowerShell. The app folder is written to `dist/Cutroom`.
 
-Android and iOS are future targets. One possible port would reuse the editor in a mobile WebView and implement native file selection, processing, and sharing behind the same editing operations. The desktop Python server and command-line tools would need mobile equivalents. A shared Rust processing library is an option if both platforms need substantial common native code.
+**Android.** Install the debug APK on your phone for personal testing. The app works independently of the PC. After an export, tap **Save or share** to open the Android share sheet. To rebuild, install Node.js 22+, JDK 21, and Android SDK Platform 35. Run the following commands from the repository root, then find the APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+```powershell
+npm ci
+npm run build:mobile
+npx cap sync android
+.\android\gradlew.bat -p android assembleDebug
+```
+
+**iOS.** On a Mac with Xcode and CocoaPods installed, run `npm ci`, `npm run build:mobile`, `npx cap sync ios`, and `npx cap open ios`. Select your development team and iPhone in Xcode, then run the App target. The repository includes the iOS project. Building and signing an iPhone installation requires the Mac toolchain.
+
+## Processing and performance
+
+Windows uses native FFmpeg, FFprobe and Pillow. Mono and stereo 24-bit PCM audio splits copy samples in chunks. Grid exports resize each tile directly from the source crop to keep peak memory use down.
+
+The mobile apps bundle FFmpeg WebAssembly locally. The editor starts a worker when it needs to inspect or process media, mounts source files for reading, and releases the worker after the job. Photo grids use one tile-sized canvas. Exports use the device share sheet. Long video encodes can take time and use substantial memory on phones. Keep Cutroom in the foreground until the export completes.
+
+Mobile pitch and tempo changes use sample-rate conversion and FFmpeg tempo filters. Windows uses Rubber Band. Preview support for imported media depends on the codecs supported by the device WebView.
 
 The included 2:14 demo uses an [alpine landscape photograph from Unsplash](https://images.unsplash.com/photo-1470770841072-f978cf4d019e).

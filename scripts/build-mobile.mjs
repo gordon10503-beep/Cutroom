@@ -1,0 +1,11 @@
+import {cp,mkdir,readFile,writeFile} from 'node:fs/promises';
+import {build} from 'esbuild';
+const out='dist/mobile';
+await mkdir(out,{recursive:true});
+await Promise.all(['app.js','style.css','assets'].map(path=>cp(path,out+'/'+path,{recursive:true})));
+await cp('node_modules/@ffmpeg/core/dist/umd',out,{recursive:true});
+await cp('node_modules/fflate/umd/index.js',out+'/fflate.js');
+await cp('mobile/worker.js',out+'/worker.js');
+await build({entryPoints:['mobile/bridge.js'],bundle:true,minify:true,outfile:out+'/bridge.js',target:'es2020'});
+const html=await readFile('index.html','utf8');
+await writeFile(out+'/index.html',html.replace('<script src="/app.js">','<script src="bridge.js"></script><script src="app.js">'));

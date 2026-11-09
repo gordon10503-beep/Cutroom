@@ -57,7 +57,7 @@ function renderMedia(){
  $('resolution').textContent=m?.width?m.width+' × '+m.height:tools[task][3].toUpperCase();
  $('stage').innerHTML='';$('player').innerHTML='';$('source').innerHTML='';
  if(!m){$('stage').innerHTML='<div class="empty">'+icon(tools[task][2])+'Import '+(isAudioEditor()?'an audio file':task==='grid'?'a photo':'a GIF')+' to begin</div>';return}
- const url='/media/'+m.id;
+ const url=previewUrl(m.id);
  if(isSplitter()){
   $('stage').innerHTML=isAudioEditor()?'<div class="empty">'+icon('audio')+'Audio preview<audio id="video" preload="auto"></audio></div>':'<video id="video" playsinline preload="auto"></video><span class="over">SOURCE PREVIEW</span>';
   const v=$('video');if(m.thumb)v.poster=m.thumb;v.src=url;
@@ -176,9 +176,12 @@ function renderResults(){
  $('outputCount').textContent=(d&&speed>0?fmt(d/speed)+' · ':'')+(task==='loop'?'MP4':'WAV')}
 }
 function choose(song=false){selectingSong=song;$('file').accept=song||isAudioEditor()?'audio/*':task==='story'?'video/*':task==='grid'?'image/*':'image/gif';$('file').value='';$('file').click()}
-async function request(path,body,headers={}){const r=await fetch(path,{method:'POST',headers:{'X-Cutroom':'local',...headers},body});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed.');return data}
+function previewUrl(id){return window.mobileMedia?mobileMedia.preview(id):'/media/'+id}
+async function request(path,body,headers={}){
+ if(window.mobileMedia)return mobileMedia.request(path,body,headers);
+ const r=await fetch(path,{method:'POST',headers:{'X-Cutroom':'local',...headers},body});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed.');return data}
 $('file').onchange=async()=>{
- const f=$('file').files[0];if(!f)return;const s=current(), song=selectingSong, kind=task;s.message='Importing '+f.name+'…';s.download=null;$('status').textContent=s.message;
+ const f=$('file').files[0];if(!f)return;const s=current(), song=selectingSong, kind=task;s.message='Importing '+f.name+'…';if(s.download?.blob)URL.revokeObjectURL(s.download.url);s.download=null;$('status').textContent=s.message;
  try{const m=await request('/upload',f,{'X-Tool':kind,'X-Extension':f.name.split('.').pop()});
  if((song||kind==='audio')&&!m.audio)throw Error('Choose a file with an audio track.');
  if(!song&&kind!=='audio'&&!m.width)throw Error('Choose a file with a visual track.');
@@ -186,17 +189,20 @@ $('file').onchange=async()=>{
  if(kind==='story'||kind==='audio')Object.assign(s,{frames:[],past:[],future:[]});
  if(kind==='audio')s.mode='none';
  if(kind==='grid')Object.assign(s,{x:.5,y:.5,zoom:1});
- m.name=f.name;s[song?'song':'media']=m;s.selected=0;s.message='';}catch(e){s.message=e.message}if(s===current())render();
+ window.mobileMedia?.release(s[song?'song':'media']?.id);m.name=f.name;s[song?'song':'media']=m;s.selected=0;s.message='';}catch(e){s.message=e.message}if(s===current())render();
 };
-function showDownload(s){$('status').textContent='Export ready. ';const a=document.createElement('a');a.href=s.download.url;a.download=s.download.name;a.textContent='Save '+s.download.name;$('status').append(a)}
+function showDownload(s){$('status').textContent='Export ready. ';const a=document.createElement('a');a.href=s.download.url;a.download=s.download.name;a.textContent='Save '+s.download.name;if(window.mobileMedia?.share){
+  a.textContent='Save or share '+s.download.name;
+  a.onclick=async e=>{e.preventDefault();try{await mobileMedia.share(s.download)}catch(error){$('status').append(' '+error.message)}};
+ }$('status').append(a)}
 $('export').onclick=async()=>{
- const s=current();if(s.busy)return;s.download=null;
+ const s=current();if(s.busy)return;if(s.download?.blob)URL.revokeObjectURL(s.download.url);s.download=null;
  try{if(!s.media)throw Error('Import your '+tools[task][3]+' first.');if(task==='loop'&&!s.song)throw Error('Import a soundtrack first.');
  const data={task,id:s.media.id,mode:s.mode,length:s.length,count:s.count,rows:s.rows,cols:s.cols,portrait:s.portrait,x:s.x,y:s.y,zoom:s.zoom,key:s.key,tempo:s.tempo,song:s.song?.id};
- if(isSplitter()&&s.mode!=='none'){const boundaries=points(s);if(s.mode==='custom'){if(isAudioEditor())data.points=boundaries.slice(1,-1);else data.frames=s.frames}}
+ if(isSplitter()&&s.mode!=='none'){const boundaries=points(s);if(window.mobileMedia)data.boundaries=boundaries;if(s.mode==='custom'){if(isAudioEditor())data.points=boundaries.slice(1,-1);else data.frames=s.frames}}
  s.busy=true;s.message='Exporting…';$('export').disabled=true;$('status').textContent=s.message;
  s.download=await request('/export',JSON.stringify(data),{'Content-Type':'application/json'});s.message='';
- if(current()===s){showDownload(s);$('status').querySelector('a').click()}
+ if(current()===s){showDownload(s);if(!window.mobileMedia?.share)$('status').querySelector('a').click()}
  }catch(e){s.message=e.message;if(s===current())$('status').textContent=e.message}
  finally{s.busy=false;if(s===current())$('export').disabled=false}
 };
@@ -309,7 +315,7 @@ function mountCrop(media){
  const stage=$('stage');
  stage.innerHTML='<div id="cropWindow" tabindex="0" aria-label="Photo crop. Drag or use arrow keys to move the photo."><img draggable="false" alt="Selected photo crop"><div class="guide"></div></div>';
  const crop=$('cropWindow'),img=crop.querySelector('img'),s=states.grid;
- img.onload=drawCrop;img.src='/media/'+media.id;
+ img.onload=drawCrop;img.src=previewUrl(media.id);
  let drag;
  crop.onpointerdown=e=>{if(e.button!==0)return;crop.setPointerCapture(e.pointerId);drag={x:s.x,y:s.y,left:e.clientX,top:e.clientY}};
  crop.onpointermove=e=>{

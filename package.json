@@ -1,0 +1,33 @@
+{
+  "name": "cutroom",
+  "version": "1.0.0",
+  "description": "Cutroom is a local Windows media editor for preparing Instagram stories, profile grids, and song covers. It runs in your browser and processes your files on your computer.",
+  "scripts": {
+    "build:mobile": "node scripts/build-mobile.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gordon10503-beep/Cutroom.git"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gordon10503-beep/Cutroom/issues"
+  },
+  "homepage": "https://github.com/gordon10503-beep/Cutroom#readme",
+  "dependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/filesystem": "^7.1.9",
+    "@capacitor/ios": "^7.6.10",
+    "@capacitor/share": "^7.0.4",
+    "@ffmpeg/core": "^0.12.10",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.10",
+    "esbuild": "^0.28.2"
+  },
+  "private": true
+}

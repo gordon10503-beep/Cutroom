@@ -7,6 +7,7 @@ import mimetypes
 import subprocess
 import tempfile
 import uuid
+import wave
 import webbrowser
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -102,6 +103,30 @@ def export_frame_clips(path, dest, indices):
                "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{number:03}.mp4")
 
 
+def split_pcm(path, points, dest):
+    """Stream mono/stereo PCM samples directly into the numbered WAV files."""
+    try:
+        source = wave.open(str(path), "rb")
+    except wave.Error:
+        return False
+    with source:
+        if source.getnchannels() > 2 or source.getsampwidth() != 3:
+            return False
+        rate = source.getframerate()
+        bounds = [round(t * rate) for t in points[:-1]] + [source.getnframes()]
+        for i, (first, stop) in enumerate(zip(bounds, bounds[1:]), 1):
+            if first >= stop:
+                raise ValueError("Each audio clip must contain at least one sample.")
+            with wave.open(str(dest / f"clip-{i:03}.wav"), "wb") as clip:
+                clip.setparams(source.getparams())
+                remaining = stop - first
+                while remaining:
+                    count = min(remaining, 65536)
+                    clip.writeframesraw(source.readframes(count))
+                    remaining -= count
+    return True
+
+
 def export(data, dest):
     path = files[data["id"]]
     task = data["task"]
@@ -126,13 +151,14 @@ def export(data, dest):
             path = adjusted
             meta = probe(path)
             points = [t / tempo for t in points[:-1]] + [meta["duration"]]
-        for i, (start, end) in enumerate(zip(points, points[1:]), 1):
-            rate = meta["sample_rate"]
-            first, stop = round(start * rate), round(end * rate)
-            if first >= stop:
-                raise ValueError("Each audio clip must contain at least one sample.")
-            encode("-ss", f"{first/rate:.9f}", "-i", path, "-map", "0:a:0", "-af", f"atrim=end_sample={stop-first}",
-                   "-c:a", "pcm_s24le", dest / f"clip-{i:03}.wav")
+        if not split_pcm(path, points, dest):
+            for i, (start, end) in enumerate(zip(points, points[1:]), 1):
+                rate = meta["sample_rate"]
+                first, stop = round(start * rate), round(end * rate)
+                if first >= stop:
+                    raise ValueError("Each audio clip must contain at least one sample.")
+                encode("-ss", f"{first/rate:.9f}", "-i", path, "-map", "0:a:0", "-af", f"atrim=end_sample={stop-first}",
+                       "-c:a", "pcm_s24le", dest / f"clip-{i:03}.wav")
         if path.parent == dest:
             path.unlink()
     elif task == "grid":
@@ -150,11 +176,12 @@ def export(data, dest):
             scale = min(source.width/width, source.height/total_height)/zoom
             w, h = width*scale, total_height*scale
             left, top = (source.width-w)*x, (source.height-h)*y
-            img = source.resize((width, total_height), Image.Resampling.LANCZOS,
-                                box=(left, top, min(source.width, left+w), min(source.height, top+h)))
+            tile_w, tile_h = w / cols, h / rows
             for r in range(rows):
                 for c in range(cols):
-                    tile = img.crop((c*1080, r*height, (c+1)*1080, (r+1)*height))
+                    box = (left + c*tile_w, top + r*tile_h,
+                           min(source.width, left + (c+1)*tile_w), min(source.height, top + (r+1)*tile_h))
+                    tile = source.resize((1080, height), Image.Resampling.LANCZOS, box=box)
                     tile.save(dest / f"post-{rows*cols-r*cols-c:03}.jpg", quality=95)
     elif task in ("loop", "audio"):
         song = files[data["song"]] if task == "loop" else path
