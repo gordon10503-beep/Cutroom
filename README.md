@@ -17,7 +17,7 @@ ffmpeg -hide_banner -encoders | Select-String libx264
 ffmpeg -hide_banner -filters | Select-String rubberband
 ```
 
-The launcher chooses a free local port and opens your default browser. For a specific port, run `python server.py --port 8765`. Download your exports before closing the server. Imported files and exports use a temporary workspace, and refreshing the page resets editor controls.
+The launcher chooses a free local port and opens your default browser. For a specific port, run `python server.py --port 8765`. Windows exports are saved in `Downloads/Cutroom` under your user profile. Select **Open export folder** when rendering finishes to open the export in Explorer. Imports use a temporary workspace, and refreshing the page resets editor controls.
 
 ## Split video or audio
 
@@ -41,13 +41,13 @@ Import a photo, choose rows and columns, and select portrait (3:4) or square til
 
 Open **GIF looper**, import a GIF and a soundtrack, and set pitch and tempo. The GIF repeats until the adjusted soundtrack ends. Export an H.264 MP4 with AAC audio.
 
-Use **Audio editor** to export the adjusted soundtrack by itself as a 24-bit WAV. Pitch is measured in semitones, so +12 raises the key by an octave. Tempo is a multiplier, so 0.8 plays at 80% speed. Use the slider or type a positive value. Audio editor playback previews the source, and the export contains the adjustments.
+Use **Audio editor** to export the adjusted soundtrack by itself as a 24-bit WAV. Pitch is measured in semitones, so +12 raises the key by an octave. Tempo is a multiplier, so 0.8 plays at 80% speed. Use the slider or type a positive value. Press Play to audition the soundtrack. Pitch and tempo update during playback. The − and + buttons step by one semitone. Live pitch preview uses a low-latency effect, so its sound can differ from the final render.
 
 ## Packaged apps
 
 **Windows x64.** Extract the entire portable ZIP, then open `Cutroom.exe`. Keep the small Cutroom window open while editing. The distribution includes Python, Pillow, FFmpeg and FFprobe. To rebuild on Windows with those tools installed, install PyInstaller with `python -m pip install pyinstaller` and run `.\scripts\build-windows.ps1` from PowerShell. The app folder is written to `dist/Cutroom`.
 
-**Android.** Install the debug APK on your phone for personal testing. The app works independently of the PC. After an export, tap **Save or share** to open the Android share sheet. To rebuild, install Node.js 22+, JDK 21, and Android SDK Platform 35. Run the following commands from the repository root, then find the APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
+**Android.** Install the debug APK on your phone for personal testing. The app works independently of the PC. The progress bar shows rendering and saving. Finished exports are saved on the device. Use **Open export folder** or **Saved exports** to browse them, and **Share file** to send one to another app. To rebuild, install Node.js 22+, JDK 21, and Android SDK Platform 35. Run the following commands from the repository root, then find the APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ```powershell
 npm ci

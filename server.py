@@ -1,6 +1,9 @@
 from functools import lru_cache
 from fractions import Fraction
 import argparse
+import os
+import shutil
+from contextvars import ContextVar
 import json
 import math
 import mimetypes
@@ -38,7 +41,29 @@ def probe(path):
                 sample_rate=next((int(s["sample_rate"]) for s in streams if s["codec_type"] == "audio"), 0))
 
 
-def encode(*args):
+notify_progress = ContextVar("notify_progress", default=None)
+
+def report(label, fraction=None):
+    callback = notify_progress.get()
+    if callback:
+        callback(label, fraction)
+
+def encode(*args, seconds=None, label="Encoding", offset=0, span=1):
+    if seconds and notify_progress.get():
+        report(label, offset)
+        command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                   "-progress", "pipe:1", "-nostats", *map(str, args)]
+        with tempfile.TemporaryFile() as errors, subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as proc:
+            for line in proc.stdout:
+                if line.startswith(b"out_time_us="):
+                    value = line.partition(b"=")[2].strip()
+                    if value.isdigit():
+                        report(label, offset + span*min(1, int(value)/1e6/seconds))
+            if proc.wait():
+                errors.seek(0)
+                raise ValueError(errors.read().decode(errors="replace")[-750:])
+        return
     run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", *map(str, args)])
 
 
@@ -100,7 +125,7 @@ def export_frame_clips(path, dest, indices):
         audio = ["-map", "0:a:0", "-af", f"atrim=start={start}:end={end},asetpts=PTS-{start}/TB"] if meta["audio"] else []
         encode("-i", path, "-map", "0:V:0", "-vf", video, *audio, "-fps_mode", "vfr",
                "-enc_time_base", "filter", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{number:03}.mp4")
+               "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{number:03}.mp4", seconds=end-start, label=f"Clip {number} of {len(bounds)-1}", offset=(number-1)/(len(bounds)-1), span=1/(len(bounds)-1))
 
 
 def split_pcm(path, points, dest):
@@ -117,6 +142,7 @@ def split_pcm(path, points, dest):
         for i, (first, stop) in enumerate(zip(bounds, bounds[1:]), 1):
             if first >= stop:
                 raise ValueError("Each audio clip must contain at least one sample.")
+            report(f"Clip {i} of {len(bounds)-1}", (i-1)/(len(bounds)-1))
             with wave.open(str(dest / f"clip-{i:03}.wav"), "wb") as clip:
                 clip.setparams(source.getparams())
                 remaining = stop - first
@@ -137,7 +163,7 @@ def export(data, dest):
         for i, (a, b) in enumerate(zip(points, points[1:]), 1):
             encode("-ss", a, "-i", path, "-t", b-a, "-map", "0:v:0", "-map", "0:a:0?",
                    "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30", "-c:v", "libx264", "-preset", "veryfast",
-                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{i:03}.mp4")
+                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", dest / f"clip-{i:03}.mp4", seconds=b-a,label=f"Clip {i} of {len(points)-1}", offset=(i-1)/(len(points)-1),span=1/(len(points)-1))
     elif task == "audioSplit" or (task == "audio" and data.get("mode", "none") != "none"):
         task = "audioSplit"
         meta = probe(path)
@@ -179,6 +205,7 @@ def export(data, dest):
             tile_w, tile_h = w / cols, h / rows
             for r in range(rows):
                 for c in range(cols):
+                    report(f"Tile {r*cols+c+1} of {rows*cols}", (r*cols+c)/(rows*cols))
                     box = (left + c*tile_w, top + r*tile_h,
                            min(source.width, left + (c+1)*tile_w), min(source.height, top + (r+1)*tile_h))
                     tile = source.resize((1080, height), Image.Resampling.LANCZOS, box=box)
@@ -188,16 +215,16 @@ def export(data, dest):
         effect = audio_filter(data["key"], data["tempo"])
         if task == "audio":
             out = dest / "audio-mix.wav"
-            encode("-i", song, "-vn", "-af", effect, "-c:a", "pcm_s24le", out)
+            encode("-i", song, "-vn", "-af", effect, "-c:a", "pcm_s24le", out, seconds=probe(song)["duration"]/float(data["tempo"]),label="Rendering audio")
         else:
             out = dest / "cover-loop.mp4"
             soundtrack = dest / "soundtrack.wav"
-            encode("-i", song, "-vn", "-af", effect, "-c:a", "pcm_s24le", soundtrack)
+            encode("-i", song, "-vn", "-af", effect, "-c:a", "pcm_s24le", soundtrack, seconds=probe(song)["duration"]/float(data["tempo"]),label="Rendering soundtrack",span=.25)
             duration = probe(soundtrack)["duration"]
             encode("-stream_loop", "-1", "-ignore_loop", "1", "-i", path, "-i", soundtrack,
                    "-map", "0:v:0", "-map", "1:a:0", "-t", duration,
                    "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2,fps=30", "-c:v", "libx264",
-                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", out)
+                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", out, seconds=duration,label="Rendering video",offset=.25,span=.75)
             soundtrack.unlink()
         return out
     else:
@@ -205,6 +232,7 @@ def export(data, dest):
     name, pattern = {"story": ("story-clips.zip", "*.mp4"), "audioSplit": ("audio-clips.zip", "*.wav"),
                      "grid": ("profile-grid.zip", "*.jpg")}[task]
     out = dest / name
+    report("Packing clips" if task != "grid" else "Packing tiles")
     with zipfile.ZipFile(out, "w") as archive:
         for item in sorted(dest.glob(pattern)):
             archive.write(item, item.name)
@@ -216,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         if route.startswith("/media/"):
             path = files.get(route.split("/")[-1])
-        elif route in ("/", "/index.html", "/app.js", "/style.css", "/assets/alpine.jpg"):
+        elif route in ("/", "/index.html", "/app.js", "/style.css", "/assets/alpine.jpg", "/assets/preview-pitch.js"):
             path = ROOT / (route.strip("/") or "index.html")
         else:
             path = None
@@ -285,9 +313,41 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/export":
                 dest = WORK / token
                 dest.mkdir()
-                path = export(json.loads(self.rfile.read(n)), dest)
-                files[token] = path
-                result = dict(url="/media/"+token, name=path.name)
+                data = json.loads(self.rfile.read(n))
+                stream = self.headers.get("Accept") == "application/x-ndjson"
+                if stream:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/x-ndjson")
+                    self.end_headers()
+                def event(obj):
+                    self.wfile.write((json.dumps(obj)+"\n").encode())
+                    self.wfile.flush()
+                handle = notify_progress.set((lambda label, fraction: event(dict(label=label, fraction=fraction))) if stream else None)
+                try:
+                    path = export(data, dest)
+                    report("Saving export")
+                    folder = Path.home() / "Downloads" / "Cutroom" / token
+                    folder.mkdir(parents=True)
+                    saved = folder / path.name
+                    shutil.move(path, saved)
+                    files[token] = saved
+                    result = dict(url="/media/"+token, name=saved.name, folderId=token)
+                except Exception as exc:
+                    if stream:
+                        event({"error": str(exc)})
+                        return
+                    raise
+                finally:
+                    notify_progress.reset(handle)
+                if stream:
+                    event({"result": result})
+                    return
+            elif self.path == "/open-folder":
+                saved = files[json.loads(self.rfile.read(n))["id"]]
+                if saved.parent.parent != Path.home() / "Downloads" / "Cutroom":
+                    raise ValueError("Unknown export folder.")
+                os.startfile(saved.parent)
+                result = {}
             else:
                 return self.send_error(404)
             status = 200

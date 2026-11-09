@@ -40,6 +40,13 @@ async function processMedia({file,song,operation,options}){
   return {times:frames.map(f=>Number(f.best_effort_timestamp_time)-(Number(meta.format.start_time)||0))};
  }
  const d=options, encode=(...args)=>command('exec',['-v','error',...args]);
+ let phase='Rendering audio',expected=(d.sourceDuration||duration)/Number(d.tempo||1);
+ let lastUpdate=0;
+ core.setProgress(({time})=>{
+  if(performance.now()-lastUpdate<120)return;
+  lastUpdate=performance.now();
+  self.postMessage({progress:{label:phase,fraction:expected>0?Math.min(.99,time/1e6/expected):null}});
+ });
  const video=['-vf','pad=ceil(iw/2)*2:ceil(ih/2)*2','-c:v','libx264','-preset','ultrafast','-threads',1,'-pix_fmt','yuv420p','-c:a','aac'];
  function blob(name,type){return new Blob([fs.readFile(name)],{type})}
  let track=input;
@@ -52,6 +59,7 @@ async function processMedia({file,song,operation,options}){
   if(d.task==='loop'){
    command('ffprobe',['-v','error','-show_entries','format=duration','-of','json','-o','length.json',track]);
    const length=JSON.parse(fs.readFile('length.json',{encoding:'utf8'})).format.duration;
+   phase='Rendering video';expected=Number(length);
    encode('-stream_loop',-1,'-ignore_loop',1,'-i',input,'-i',track,'-map','0:v:0','-map','1:a:0','-t',length,'-vf','fps=30,pad=ceil(iw/2)*2:ceil(ih/2)*2',...video.slice(2),'cover.mp4');
    return blob('cover.mp4','video/mp4');
   }
@@ -61,6 +69,9 @@ async function processMedia({file,song,operation,options}){
  const zip=new fflate.Zip((error,bytes)=>{if(error)throw error;chunks.push(bytes)});
  for(let i=0;i<bounds.length-1;i++){
   const start=bounds[i],end=bounds[i+1],name='clip-'+String(i+1).padStart(3,'0');
+  phase='Clip '+(i+1)+' of '+(bounds.length-1);
+  expected=(end-start)/(d.task==='audio'?d.tempo:1);
+  self.postMessage({progress:{label:phase,fraction:0}});
   const output=name+(d.task==='story'?'.mp4':'.wav');
   if(d.task==='story'){
    if(d.mode==='custom'){
